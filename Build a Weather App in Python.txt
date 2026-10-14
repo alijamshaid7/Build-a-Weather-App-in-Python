@@ -1,0 +1,352 @@
+
+import tkinter as tk
+from tkinter import messagebox
+from datetime import datetime
+import threading
+import requests
+import pytz
+from geopy.geocoders import Nominatim
+from timezonefinder import TimezoneFinder
+
+# ---------------- CONFIGURATION ----------------
+API_KEY = "YOUR_OPENWEATHERMAP_API_KEY"
+
+BG = "#102238"
+PANEL = "#183650"
+ACCENT = "#31B8E8"
+WHITE = "#FFFFFF"
+MUTED = "#B9D0E0"
+
+root = tk.Tk()
+root.title("Weather App")
+root.geometry("900x560")
+root.resizable(False, False)
+root.configure(bg=BG)
+
+timezone_finder = TimezoneFinder()
+session = requests.Session()
+
+
+# ---------------- UI HELPERS ----------------
+def make_label(parent, text, size=12, color=WHITE,
+               bold=False, bg=None):
+    return tk.Label(
+        parent,
+        text=text,
+        font=("Segoe UI", size, "bold" if bold else "normal"),
+        fg=color,
+        bg=bg or parent.cget("bg")
+    )
+
+
+def make_card(parent, title, value, column):
+    card = tk.Frame(
+        parent,
+        bg=PANEL,
+        padx=14,
+        pady=14,
+        highlightthickness=1,
+        highlightbackground="#2B4B65"
+    )
+    card.grid(row=0, column=column, padx=7, pady=8, sticky="nsew")
+
+    make_label(
+        card, title, 10, MUTED, True, PANEL
+    ).pack(anchor="w")
+
+    value_label = make_label(
+        card, value, 15, WHITE, True, PANEL
+    )
+    value_label.pack(anchor="w", pady=(8, 0))
+
+    return value_label
+
+
+# ---------------- HEADER ----------------
+header = tk.Frame(root, bg=BG)
+header.pack(fill="x", padx=28, pady=(20, 12))
+
+make_label(
+    header, "WEATHER APP", 22, WHITE, True, BG
+).pack(side="left")
+
+make_label(
+    header, "LIVE CITY FORECAST", 10, ACCENT, True, BG
+).pack(side="left", padx=16, pady=(7, 0))
+
+
+# ---------------- SEARCH BOX ----------------
+search_frame = tk.Frame(root, bg=PANEL, padx=10, pady=10)
+search_frame.pack(fill="x", padx=28, pady=8)
+
+textfield = tk.Entry(
+    search_frame,
+    font=("Segoe UI", 15),
+    bg="#25445D",
+    fg=WHITE,
+    insertbackground=WHITE,
+    relief="flat",
+    borderwidth=0
+)
+textfield.pack(
+    side="left", fill="x", expand=True,
+    ipady=9, padx=(4, 10)
+)
+textfield.insert(0, "Lahore")
+
+search_button = tk.Button(
+    search_frame,
+    text="Search",
+    font=("Segoe UI", 11, "bold"),
+    bg=ACCENT,
+    fg="#092033",
+    activebackground="#6CD5F5",
+    relief="flat",
+    padx=20,
+    pady=8,
+    cursor="hand2"
+)
+search_button.pack(side="right")
+
+status_label = make_label(
+    root, "Enter a city to see current weather.",
+    10, MUTED, bg=BG
+)
+status_label.pack(anchor="w", padx=32, pady=(4, 0))
+
+
+# ---------------- MAIN WEATHER PANEL ----------------
+main_panel = tk.Frame(root, bg=PANEL, padx=24, pady=18)
+main_panel.pack(fill="x", padx=28, pady=14)
+
+city_label = make_label(
+    main_panel, "Your City", 20, WHITE, True, PANEL
+)
+city_label.pack(anchor="w")
+
+time_label = make_label(
+    main_panel, "--:--", 11, MUTED, bg=PANEL
+)
+time_label.pack(anchor="w", pady=(3, 10))
+
+top_row = tk.Frame(main_panel, bg=PANEL)
+top_row.pack(fill="x")
+
+temperature_label = make_label(
+    top_row, "--°C", 48, WHITE, True, PANEL
+)
+temperature_label.pack(side="left", anchor="center")
+
+condition_frame = tk.Frame(top_row, bg=PANEL)
+condition_frame.pack(side="left", padx=24)
+
+condition_label = make_label(
+    condition_frame, "Weather condition",
+    16, ACCENT, True, PANEL
+)
+condition_label.pack(anchor="w")
+
+description_label = make_label(
+    condition_frame, "Description appears here",
+    11, MUTED, bg=PANEL
+)
+description_label.pack(anchor="w", pady=(5, 0))
+
+feels_label = make_label(
+    condition_frame, "Feels like --°C",
+    11, WHITE, bg=PANEL
+)
+feels_label.pack(anchor="w", pady=(5, 0))
+
+
+# ---------------- WEATHER DETAIL CARDS ----------------
+details = tk.Frame(root, bg=BG)
+details.pack(fill="x", padx=20, pady=(0, 12))
+
+for column in range(4):
+    details.grid_columnconfigure(column, weight=1)
+
+wind_value = make_card(details, "WIND SPEED", "-- m/s", 0)
+humidity_value = make_card(details, "HUMIDITY", "--%", 1)
+pressure_value = make_card(details, "PRESSURE", "-- hPa", 2)
+visibility_value = make_card(details, "VISIBILITY", "-- km", 3)
+
+make_label(
+    root,
+    "Weather data provided by OpenWeatherMap",
+    9, MUTED, bg=BG
+).pack(pady=(0, 10))
+
+
+# ---------------- ERROR HANDLING ----------------
+def show_error(message):
+    status_label.config(text="Could not update weather.")
+    messagebox.showerror("Weather App", message)
+
+
+# ---------------- UPDATE WEATHER UI ----------------
+def update_weather(data):
+    city_label.config(text=data["city"])
+    time_label.config(text=data["time"])
+    temperature_label.config(text=f'{data["temp"]}°C')
+    condition_label.config(text=data["condition"])
+    description_label.config(text=data["description"])
+    feels_label.config(text=f'Feels like {data["feels"]}°C')
+
+    wind_value.config(text=f'{data["wind"]} m/s')
+    humidity_value.config(text=f'{data["humidity"]}%')
+    pressure_value.config(text=f'{data["pressure"]} hPa')
+    visibility_value.config(text=data["visibility"])
+
+    status_label.config(text="Weather updated successfully.")
+
+
+# ---------------- GET WEATHER DATA ----------------
+def fetch_weather(city):
+    if not API_KEY or API_KEY == ""ADD your API KEY"":
+        root.after(
+            0,
+            lambda: show_error(
+                "Please add your OpenWeatherMap API key "
+                "to the API_KEY variable in the code."
+            )
+        )
+        return
+
+    try:
+        response = session.get(
+            "https://api.openweathermap.org/data/2.5/weather",
+            params={
+                "q": city,
+                "appid": API_KEY,
+                "units": "metric"
+            },
+            timeout=15
+        )
+
+        if response.status_code == 404:
+            raise ValueError(
+                "City not found. Please check the spelling."
+            )
+
+        if response.status_code == 401:
+            raise ValueError(
+                "Invalid API key or the key is not activated yet."
+            )
+
+        response.raise_for_status()
+        data = response.json()
+
+        weather = data["weather"][0]
+        main = data["main"]
+        wind = data.get("wind", {})
+
+        # Find the city's local time zone
+        lat = data["coord"]["lat"]
+        lon = data["coord"]["lon"]
+
+        timezone_name = timezone_finder.timezone_at(
+            lat=lat, lng=lon
+        )
+
+        if timezone_name:
+            local_zone = pytz.timezone(timezone_name)
+            local_time = datetime.now(local_zone)
+            time_text = local_time.strftime(
+                "%A, %d %b | %I:%M %p"
+            )
+        else:
+            time_text = "Local time unavailable"
+
+        visibility = data.get("visibility")
+
+        result = {
+            "city": (
+                f'{data.get("name", city)}, '
+                f'{data.get("sys", {}).get("country", "")}'
+            ).strip(", "),
+            "time": time_text,
+            "temp": round(main["temp"]),
+            "condition": weather.get("main", "Unknown"),
+            "description": weather.get(
+                "description", ""
+            ).capitalize(),
+            "feels": round(main.get("feels_like", main["temp"])),
+            "wind": wind.get("speed", 0),
+            "humidity": main.get("humidity", "--"),
+            "pressure": main.get("pressure", "--"),
+            "visibility": (
+                f"{visibility / 1000:.1f} km"
+                if visibility is not None else "-- km"
+            )
+        }
+
+        root.after(0, lambda: update_weather(result))
+
+    except ValueError as error:
+        root.after(0, lambda msg=str(error): show_error(msg))
+
+    except requests.exceptions.Timeout:
+        root.after(
+            0,
+            lambda: show_error(
+                "Request timed out. Please try again."
+            )
+        )
+
+    except requests.exceptions.ConnectionError:
+        root.after(
+            0,
+            lambda: show_error(
+                "Internet connection unavailable."
+            )
+        )
+
+    except requests.exceptions.RequestException:
+        root.after(
+            0,
+            lambda: show_error(
+                "Weather request failed. Please try again."
+            )
+        )
+
+    except (KeyError, IndexError, TypeError):
+        root.after(
+            0,
+            lambda: show_error(
+                "Could not read weather data. Please try again."
+            )
+        )
+
+
+# ---------------- SEARCH FUNCTION ----------------
+def get_weather(event=None):
+    city = textfield.get().strip()
+
+    if not city:
+        messagebox.showwarning(
+            "Missing City", "Please enter a city name."
+        )
+        return
+
+    search_button.config(state="disabled", text="Loading...")
+    status_label.config(text=f"Getting weather for {city}...")
+
+    def worker():
+        try:
+            fetch_weather(city)
+        finally:
+            root.after(
+                0,
+                lambda: search_button.config(
+                    state="normal", text="Search"
+                )
+            )
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+search_button.config(command=get_weather)
+textfield.bind("<Return>", get_weather)
+
+root.mainloop()
